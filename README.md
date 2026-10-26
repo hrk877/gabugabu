@@ -12,7 +12,7 @@ macOS 13以降 / Apple Silicon・Intel両対応 / 無料・MIT License
 
 ## どう使う？
 
-1. [Releases](https://github.com/hrk877/gabugabu/releases/latest) の **GABUGABU-1.3.2-mac.zip** をダウンロードして展開。
+1. [Releases](https://github.com/hrk877/gabugabu/releases/latest) の **GABUGABU-1.3.3-mac.zip** をダウンロードして展開。
 2. **GABUGABU.app** を「アプリケーション」へ移して開く。
 3. 初回だけ「アクセシビリティ設定を開く」から **GABUGABU** を許可する。
 4. 普段のアプリに戻り、文章を選択して **⌘⌥S** を押す。
@@ -74,7 +74,7 @@ Xcode Command Line ToolsがあるMacで実行。外部ライブラリー不要�
 /bin/bash build.sh
 ```
 
-`dist/GABUGABU.app` と `dist/GABUGABU-1.3.2-mac.zip` が生成されます。テストは保存・同時追記・選択ポリシー・メタデータ・記録移行・パス検証・取得期限を確認します。取得期限のテストは外部AX APIを代役に置き換えて実際のCapture処理を実行するもので、実アプリの互換性を保証するものではありません。実際のアプリ間取得は権限設定後に別途確認してください。
+`dist/GABUGABU.app` と `dist/GABUGABU-1.3.3-mac.zip` が生成されます。テストは保存・同時追記・選択ポリシー・メタデータ・記録移行・パス検証・取得期限を確認します。取得期限のテストは外部AX APIを代役に置き換えて実際のCapture処理を実行するもので、実アプリの互換性を保証するものではありません。実際のアプリ間取得は権限設定後に別途確認してください。
 
 不具合は [Issues](https://github.com/hrk877/gabugabu/issues) へ。実際の保存内容や個人情報をそのまま貼らず、再現する画面と手順を教えてください。
 

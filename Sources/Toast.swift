@@ -6,22 +6,19 @@ final class ToastCardView: NSView {
     init(detail: String, success: Bool, icon: NSImage?) {
         let ink = NSColor(srgbRed: 0.12, green: 0.14, blue: 0.17, alpha: 1)
         let muted = NSColor(srgbRed: 0.47, green: 0.45, blue: 0.41, alpha: 1)
-        let orange = NSColor(srgbRed: 0.95, green: 0.42, blue: 0.25, alpha: 1)
         let detailFont = NSFont.systemFont(ofSize: 12)
-        let textWidth: CGFloat = 232
+        let textWidth: CGFloat = 238
         let textHeight = ceil((detail as NSString).boundingRect(
             with: NSSize(width: textWidth, height: .greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
             attributes: [.font: detailFont]).height)
-        let height = success ? 100 : max(100, textHeight + 69)
-        super.init(frame: NSRect(x: 0, y: 0, width: 350, height: height))
+        let height = success ? 46 : max(76, textHeight + 48)
+        super.init(frame: NSRect(x: 0, y: 0, width: success ? 174 : 300, height: height))
         wantsLayer = true
         layer?.backgroundColor = NSColor(srgbRed: 0.995, green: 0.98, blue: 0.94, alpha: 1).cgColor
-        layer?.cornerRadius = 22
-        layer?.borderWidth = 1
-        layer?.borderColor = NSColor(srgbRed: 0.84, green: 0.78, blue: 0.68, alpha: 0.5).cgColor
+        layer?.cornerRadius = 14
 
-        let image = NSImageView(frame: NSRect(x: 18, y: (height - 52) / 2, width: 52, height: 52))
+        let image = NSImageView(frame: NSRect(x: 11, y: success ? 11 : 14, width: 24, height: 24))
         image.image = icon
         image.imageScaling = .scaleProportionallyUpOrDown
         image.setAccessibilityLabel("GABUGABU")
@@ -34,23 +31,12 @@ final class ToastCardView: NSView {
             addSubview(field)
             return field
         }
-        let brand = label("GABUGABU", frame: NSRect(x: 86, y: 16, width: 200, height: 15),
-                          font: .systemFont(ofSize: 9, weight: .heavy), color: orange)
-        brand.attributedStringValue = NSAttributedString(string: "GABUGABU", attributes: [
-            .font: NSFont.systemFont(ofSize: 9, weight: .heavy), .foregroundColor: orange, .kern: 1.4
-        ])
         _ = label(success ? "保存しました" : "保存できませんでした",
-                  frame: NSRect(x: 85, y: 35, width: 232, height: 24),
-                  font: .systemFont(ofSize: 17, weight: .semibold), color: ink)
-        let subtitle = label(detail, frame: NSRect(x: 86, y: 63, width: textWidth, height: max(18, textHeight + 3)),
-                             font: detailFont, color: muted)
-        if success {
-            subtitle.maximumNumberOfLines = 1
-            subtitle.lineBreakMode = .byTruncatingMiddle
-            let check = NSImageView(frame: NSRect(x: 313, y: 20, width: 16, height: 16))
-            check.image = NSImage(systemSymbolName: "checkmark.circle.fill", accessibilityDescription: "保存完了")
-            check.contentTintColor = orange
-            addSubview(check)
+                  frame: NSRect(x: 45, y: success ? 13 : 15, width: success ? 116 : textWidth, height: 21),
+                  font: .systemFont(ofSize: 13, weight: .medium), color: ink)
+        if !success {
+            _ = label(detail, frame: NSRect(x: 45, y: 39, width: textWidth, height: max(18, textHeight + 3)),
+                      font: detailFont, color: muted)
         }
     }
 

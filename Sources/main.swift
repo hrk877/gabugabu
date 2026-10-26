@@ -130,7 +130,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let frame = screen?.visibleFrame { panel.setFrameTopLeftPoint(NSPoint(x: frame.midX - card.bounds.width / 2, y: frame.maxY - 28)) }
         toast = panel
         panel.orderFrontRegardless()
-        toastTimer = Timer.scheduledTimer(withTimeInterval: success ? 2.2 : 6, repeats: false) { [weak self] _ in self?.toast?.close() }
+        toastTimer = Timer.scheduledTimer(withTimeInterval: success ? 1.6 : 6, repeats: false) { [weak self] _ in self?.toast?.close() }
         if !success { NSSound.beep() }
     }
 }
