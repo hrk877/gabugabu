@@ -20,6 +20,7 @@ enum Capture {
         }
         var result: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, name as CFString, &result) == .success else { return nil }
+        if let deadline, Date() >= deadline { return nil }
         return result
     }
 
@@ -40,28 +41,35 @@ enum Capture {
         var result: CFTypeRef?
         guard AXUIElementCopyParameterizedAttributeValue(element, kAXStringForRangeParameterizedAttribute as CFString,
                                                          value, &result) == .success else { return nil }
+        if let deadline, Date() >= deadline { return nil }
         return result as? String
     }
 
     static func read(_ element: AXUIElement, bundleID: String) throws -> (text: String, mode: CaptureContext.Mode) {
-        let role = attribute(element, kAXRoleAttribute) as? String ?? ""
-        let subrole = attribute(element, kAXSubroleAttribute) as? String
+        // AX timeouts apply to the exact object, not the app or its child objects.
+        // Share one budget across field reads and ancestor search.
+        let deadline = Date().addingTimeInterval(0.75)
+        guard let role = attribute(element, kAXRoleAttribute, deadline: deadline) as? String else { throw CaptureError.unsupported }
+        let subrole = attribute(element, kAXSubroleAttribute, deadline: deadline) as? String
         guard CapturePolicy.allowedSelection(role: role, subrole: subrole, app: bundleID) else { throw CaptureError.unsupported }
-        let selected = selectedText(element)
+        let selected = selectedText(element, deadline: deadline)
+        guard Date() < deadline else { throw CaptureError.unsupported }
         if let selected, !selected.isEmpty { return (selected, .selection) }
         var writable = DarwinBoolean(false)
+        let remaining = deadline.timeIntervalSinceNow
+        guard remaining > 0 else { throw CaptureError.unsupported }
+        AXUIElementSetMessagingTimeout(element, Float(min(0.08, remaining)))
         let settable = AXUIElementIsAttributeSettable(element, kAXValueAttribute as CFString, &writable)
-        let editable = attribute(element, "AXEditable") as? Bool ?? false
+        let editable = attribute(element, "AXEditable", deadline: deadline) as? Bool ?? false
         if CapturePolicy.allowed(role: role, subrole: subrole, app: bundleID)
             && (editable || (settable == .success && writable.boolValue)) {
             // Never replace a failed selection read with the entire input field.
-            do { return (try CapturePolicy.text(selected: selected, full: attribute(element, kAXValueAttribute) as? String), .full) }
+            do { return (try CapturePolicy.text(selected: selected, full: attribute(element, kAXValueAttribute, deadline: deadline) as? String), .full) }
             catch { throw CaptureError.unsupported }
         }
         // Read-only views often put selection on the containing Web area, not the focused link/text.
         // Walk only this control's ancestors. Never read their full values or scan sibling content.
         guard CapturePolicy.maySearchAncestors(role: role) else { throw CaptureError.unsupported }
-        let deadline = Date().addingTimeInterval(0.75)
         var current = element
         for _ in 0..<24 {
             let remaining = deadline.timeIntervalSinceNow

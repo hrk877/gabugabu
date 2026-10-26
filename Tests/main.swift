@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 func check(_ value: @autoclosure () throws -> Bool, _ message: String) throws {
     if try !value() { throw NSError(domain: message, code: 1) }
@@ -93,6 +94,39 @@ do {
     try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: root)
     do { _ = try Archive(directory: alias).save(text: "attack", app: "Test", date: date); throw NSError(domain: "Directory symlink accepted", code: 1) }
     catch ArchiveError.unsafePath {}
+    let concurrentArchive = Archive(directory: root.appendingPathComponent("concurrent"))
+    let errorLock = NSLock()
+    var concurrentErrors: [String] = []
+    DispatchQueue.concurrentPerform(iterations: 8) { worker in
+        for item in 0..<25 {
+            do { _ = try concurrentArchive.save(text: "worker-\(worker)-item-\(item)-日本語", app: "Stress", date: date) }
+            catch { errorLock.lock(); concurrentErrors.append(String(describing: error)); errorLock.unlock() }
+        }
+    }
+    try check(concurrentErrors.isEmpty, "Concurrent saves all succeed: \(concurrentErrors)")
+    let concurrentFile = try FileManager.default.contentsOfDirectory(at: concurrentArchive.directory, includingPropertiesForKeys: nil)[0]
+    let concurrentText = try String(contentsOf: concurrentFile, encoding: .utf8)
+    try check(concurrentText.components(separatedBy: "```json\n").count - 1 == 200, "Concurrent appends preserve all metadata records")
+    for worker in 0..<8 {
+        for item in 0..<25 {
+            let marker = "worker-\(worker)-item-\(item)-日本語\n"
+            try check(concurrentText.components(separatedBy: marker).count - 1 == 1, "Each concurrent text saved exactly once")
+        }
+    }
+    let unsafeDirectory = root.appendingPathComponent("unsafe-file-tests")
+    try FileManager.default.createDirectory(at: unsafeDirectory, withIntermediateDirectories: true)
+    let unsafeArchive = Archive(directory: unsafeDirectory)
+    let unsafeFile = try unsafeArchive.save(text: "seed", app: "Test", date: date)
+    try FileManager.default.removeItem(at: unsafeFile)
+    try FileManager.default.linkItem(at: victim, to: unsafeFile)
+    do { _ = try unsafeArchive.save(text: "hardlink attack", app: "Test", date: date); throw NSError(domain: "Hard link accepted", code: 1) }
+    catch ArchiveError.unsafePath {}
+    try check(try String(contentsOf: victim, encoding: .utf8) == "untouched", "Hard link target untouched")
+    try FileManager.default.removeItem(at: unsafeFile)
+    try check(mkfifo(unsafeFile.path, 0o600) == 0, "FIFO fixture created")
+    do { _ = try unsafeArchive.save(text: "fifo attack", app: "Test", date: date); throw NSError(domain: "FIFO accepted", code: 1) }
+    catch ArchiveError.unsafePath {}
+    print("PASS: 200 concurrent Japanese appends exactly once, hardlink and FIFO rejection")
     print("PASS: archive preservation, append, empty input, private permissions, capture policy, selection precedence and read failure, file/directory symlinks, metadata JSON, unique IDs, URL/path normalization and missing context")
 } catch {
     fputs("FAIL: \(error)\n", stderr)

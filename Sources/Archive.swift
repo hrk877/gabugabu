@@ -88,7 +88,13 @@ struct Archive {
         day.locale = Locale(identifier: "en_US_POSIX")
         day.dateFormat = "yyyy-MM-dd"
         let name = day.string(from: date) + ".md"
-        let fd = openat(dir, name, O_WRONLY | O_CREAT | O_APPEND | O_NOFOLLOW | O_NONBLOCK, 0o600)
+        // macOS may return ENOENT when writers race to create the same new file.
+        // Retry only transient failures; never weaken no-follow or file validation.
+        var fd: Int32 = -1
+        for _ in 0..<3 {
+            fd = openat(dir, name, O_WRONLY | O_CREAT | O_APPEND | O_NOFOLLOW | O_NONBLOCK, 0o600)
+            if fd >= 0 || (errno != ENOENT && errno != EINTR) { break }
+        }
         guard fd >= 0 else { throw ArchiveError.unsafePath }
         defer { close(fd) }
         var info = stat()

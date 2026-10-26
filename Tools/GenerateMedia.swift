@@ -68,40 +68,10 @@ for size in [16, 32, 128, 256, 512] {
     }
 }
 
-let frames = 80
-let gif = CGImageDestinationCreateWithURL(output.appendingPathComponent("demo.gif") as CFURL, UTType.gif.identifier as CFString, frames, nil)!
-CGImageDestinationSetProperties(gif, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
-for frame in 0..<frames {
-    let image = autoreleasepool { render(1200, 720) {
-        rect(NSRect(x: 0, y: 0, width: 1200, height: 720), cream)
-        mark(52, 34, 54)
-        text("GABUGABU", NSRect(x: 122, y: 43, width: 900, height: 50), size: 31, weight: .heavy)
-        let stage = frame < 25 ? 0 : (frame < 40 ? 1 : 2)
-        let label = stage == 0 ? "01  文章を書く・選ぶ" : (stage == 1 ? "02  ショートカットを押す" : "03  手元に残る。あとからAIへ。")
-        text(label, NSRect(x: 52, y: 126, width: 1100, height: 60), size: 30, weight: .bold)
-        rect(NSRect(x: 52, y: 210, width: 1096, height: 375), .white, radius: 22)
-        if stage < 2 {
-            text("アイデアメモ", NSRect(x: 85, y: 236, width: 900, height: 45), size: 18, color: muted)
-            let sample = "今日のアイデアを、あとからAIと振り返りたい。"
-            let count = stage == 0 ? min(sample.count, max(0, frame * 2)) : sample.count
-            text(String(sample.prefix(count)), NSRect(x: 85, y: 310, width: 1000, height: 100), size: 32)
-            if frame >= 19 {
-                rect(NSRect(x: 85, y: 402, width: 1000, height: 52), NSColor.selectedTextBackgroundColor.withAlphaComponent(0.22), radius: 8)
-                text("あとからAIと振り返りたい。", NSRect(x: 99, y: 410, width: 980, height: 45), size: 27)
-            }
-            if stage == 1 {
-                rect(NSRect(x: 442, y: 488, width: 316, height: 68), orange, radius: 18)
-                text("⌘  ⌥  S", NSRect(x: 508, y: 499, width: 250, height: 50), size: 35, color: .white, weight: .bold)
-            }
-        } else {
-            text("✓  保存しました", NSRect(x: 85, y: 240, width: 900, height: 55), size: 27, color: orange, weight: .bold)
-            text("GABUGABU Archive / 2026-10-26.md", NSRect(x: 85, y: 304, width: 1000, height: 40), size: 22, color: muted, mono: true)
-            text("タイトル：アイデアメモ\n範囲：選択した文章\n\nあとからAIと振り返りたい。", NSRect(x: 85, y: 366, width: 1000, height: 180), size: 26)
-        }
-        text("⌘⌥S ひとつで、言葉をストック。", NSRect(x: 54, y: 620, width: 1050, height: 45), size: 26, weight: .semibold)
-        text("操作イメージ｜架空の文章を使用。対応範囲はアプリにより異なります。", NSRect(x: 54, y: 675, width: 1100, height: 26), size: 14, color: muted)
-    } }
-    CGImageDestinationAddImage(gif, image, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 0.1]] as CFDictionary)
-}
-precondition(CGImageDestinationFinalize(gif))
+let demo = Process()
+demo.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+demo.arguments = ["swift", "Tools/GenerateDemo.swift", output.appendingPathComponent("demo.gif").path]
+try demo.run()
+demo.waitUntilExit()
+precondition(demo.terminationStatus == 0, "Demo generation failed")
 print("Generated social.png, demo.gif and AppIcon.iconset")

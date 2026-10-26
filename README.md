@@ -4,7 +4,7 @@
 
 ![GABUGABU — ショートカットで文章をローカル保存](assets/social.png)
 
-AIへのプロンプトも、ページで見つけた一節も。選んで **Command + Option + S** を押すだけで、自分のMacにMarkdownで残せる小さなアプリです。
+AIへのプロンプトも、ページで見つけた一節も、書きかけの考えも。選んで **Command + Option + S** を押すだけで、自分のMacにMarkdownで残せる小さなアプリです。気になる言葉をどんどんためて、あとでAIに読ませるメモに。
 
 **[Mac版をダウンロード →](https://github.com/hrk877/gabugabu/releases/latest)**
 
@@ -12,7 +12,7 @@ macOS 13以降 / Apple Silicon・Intel両対応 / 無料・MIT License
 
 ## どう使う？
 
-1. [Releases](https://github.com/hrk877/gabugabu/releases/latest) の **GABUGABU-1.3.0-mac.zip** をダウンロードして展開。
+1. [Releases](https://github.com/hrk877/gabugabu/releases/latest) の **GABUGABU-1.3.1-mac.zip** をダウンロードして展開。
 2. **GABUGABU.app** を「アプリケーション」へ移して開く。
 3. 初回だけ「アクセシビリティ設定を開く」から **GABUGABU** を許可する。
 4. 普段のアプリに戻り、文章を選択して **⌘⌥S** を押す。
@@ -20,6 +20,8 @@ macOS 13以降 / Apple Silicon・Intel両対応 / 無料・MIT License
 入力中の文章は、何も選択していなければ入力欄全体を保存します。「保存しました」と出たら完了。アプリを開いてノートを作ったり、タイトルを付けたりする必要はありません。
 
 ![操作イメージ・架空の文章を使ったデモ](assets/demo.gif)
+
+デモは架空の文章を使った操作イメージです。口と記録の一覧は「選んだ言葉がたまる」様子の表現で、実際のアプリはメニューバーから使います。文章以外の画像・音声・動画は保存しません。
 
 ## どこに残る？
 
@@ -72,7 +74,7 @@ Xcode Command Line ToolsがあるMacで実行。外部ライブラリー不要�
 /bin/bash build.sh
 ```
 
-`dist/GABUGABU.app` と `dist/GABUGABU-1.3.0-mac.zip` が生成されます。テストは保存・追記・選択ポリシー・メタデータ・記録移行・パス検証を確認します。実際のアプリ間取得は権限設定後に別途確認してください。
+`dist/GABUGABU.app` と `dist/GABUGABU-1.3.1-mac.zip` が生成されます。テストは保存・同時追記・選択ポリシー・メタデータ・記録移行・パス検証・取得期限を確認します。取得期限のテストは外部AX APIを代役に置き換えて実際のCapture処理を実行するもので、実アプリの互換性を保証するものではありません。実際のアプリ間取得は権限設定後に別途確認してください。
 
 不具合は [Issues](https://github.com/hrk877/gabugabu/issues) へ。実際の保存内容や個人情報をそのまま貼らず、再現する画面と手順を教えてください。
 
