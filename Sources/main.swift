@@ -53,7 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             let captured = try Capture.focused()
             let file = try archive.save(text: captured.text, app: captured.app, context: captured.context)
-            message("保存しました · \(file.lastPathComponent)", success: true)
+            message(file.lastPathComponent, success: true)
         } catch { message(error.localizedDescription, success: false) }
     }
 
@@ -115,23 +115,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func message(_ text: String, success: Bool) {
         toastTimer?.invalidate()
         toast?.close()
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 420, height: success ? 62 : 100), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        let icon = Bundle.main.url(forResource: "AppIcon", withExtension: "icns").flatMap { NSImage(contentsOf: $0) }
+        let card = ToastCardView(detail: text, success: success, icon: icon)
+        let panel = NSPanel(contentRect: card.bounds, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.level = .statusBar
-        panel.backgroundColor = .windowBackgroundColor
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
         panel.hasShadow = true
         panel.isReleasedWhenClosed = false
         panel.ignoresMouseEvents = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        let label = NSTextField(wrappingLabelWithString: (success ? "✓ " : "保存できません · ") + text)
-        label.font = .systemFont(ofSize: 14)
-        label.frame = panel.contentView!.bounds.insetBy(dx: 20, dy: 16)
-        label.autoresizingMask = [.width, .height]
-        panel.contentView!.addSubview(label)
+        panel.contentView = card
         let screen = NSScreen.screens.first(where: { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) }) ?? NSScreen.main
-        if let frame = screen?.visibleFrame { panel.setFrameTopLeftPoint(NSPoint(x: frame.midX - 210, y: frame.maxY - 35)) }
+        if let frame = screen?.visibleFrame { panel.setFrameTopLeftPoint(NSPoint(x: frame.midX - card.bounds.width / 2, y: frame.maxY - 28)) }
         toast = panel
         panel.orderFrontRegardless()
-        toastTimer = Timer.scheduledTimer(withTimeInterval: success ? 2 : 6, repeats: false) { [weak self] _ in self?.toast?.close() }
+        toastTimer = Timer.scheduledTimer(withTimeInterval: success ? 2.2 : 6, repeats: false) { [weak self] _ in self?.toast?.close() }
         if !success { NSSound.beep() }
     }
 }
