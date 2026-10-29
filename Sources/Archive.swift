@@ -40,10 +40,12 @@ struct CapturePolicy {
 
 struct CaptureContext {
     enum Mode: String { case selection, full }
+    enum Method: String { case accessibility, copy }
     var title: String?
     var source: String?
     var mode: Mode
     var bundleID: String
+    var method: Method = .accessibility
 
     init(title: String? = nil, source: String? = nil, mode: Mode = .full, bundleID: String = "") {
         self.title = title
@@ -70,7 +72,8 @@ struct CaptureContext {
         return ["id": UUID().uuidString.lowercased(), "created_at": timestamp,
                 "app": app, "bundle_id": bundleID, "title": title ?? "",
                 "url": url?.isFileURL == false ? url!.absoluteString : "",
-                "document_path": documentPath ?? "", "capture_mode": mode.rawValue]
+                "document_path": documentPath ?? "", "capture_mode": mode.rawValue,
+                "capture_method": method.rawValue]
     }
 }
 

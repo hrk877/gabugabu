@@ -1,17 +1,66 @@
 import AppKit
 import ApplicationServices
+import os
+
+enum CaptureLog {
+    private static let logger = Logger(subsystem: "io.github.hrk877.gabugabu", category: "Capture")
+    // Callers pass fixed stage names and numbers only. Never pass user text or metadata.
+    static func event(_ stage: String, code: Int = 0, count: Int = 0) {
+        logger.notice("stage=\(stage, privacy: .public) code=\(code) count=\(count)")
+    }
+}
 
 enum CaptureError: LocalizedError {
-    case permission, unsupported
+    case permission, unsupported, focusUnavailable
     var errorDescription: String? {
         switch self {
         case .permission: return "「使い方・権限設定」からアクセシビリティを許可してください。"
         case .unsupported: return "文章を選択するか、入力欄をクリックしてから ⌘⌥S を押してください。この画面の選択文は読み取れない場合があります。"
+        case .focusUnavailable: return "このアプリから文章の選択位置を確認できませんでした。保存元の画面をクリックして、もう一度試してください。"
         }
     }
 }
 
 enum Capture {
+    static func waitForFocus<Value>(read: @escaping (TimeInterval) -> Value?, isCurrent: @escaping () -> Bool,
+                                   now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+                                   schedule: @escaping (TimeInterval, @escaping () -> Void) -> Void,
+                                   completion: @escaping (Result<Value, Error>) -> Void) {
+        let deadline = now() + 1.5
+        func poll() {
+            guard isCurrent() else { completion(.failure(CopySessionError.changed)); return }
+            let remaining = deadline - now()
+            guard remaining > 0 else { completion(.failure(CaptureError.focusUnavailable)); return }
+            let value = read(remaining)
+            guard isCurrent() else { completion(.failure(CopySessionError.changed)); return }
+            guard now() < deadline else { completion(.failure(CaptureError.focusUnavailable)); return }
+            if let value { completion(.success(value)); return }
+            schedule(0.05, poll)
+        }
+        poll()
+    }
+
+    static func resolvedFocus(application: AXUIElement, pid: pid_t, enableAccessibility: Bool = false,
+                              deadline: Date) -> AXUIElement? {
+        func matching(_ element: AXUIElement?) -> AXUIElement? {
+            guard let element, Date() < deadline else { return nil }
+            AXUIElementSetMessagingTimeout(element, Float(min(0.08, deadline.timeIntervalSinceNow)))
+            var owner: pid_t = 0
+            guard AXUIElementGetPid(element, &owner) == .success, owner == pid, Date() < deadline else { return nil }
+            return element
+        }
+        if let element = matching(elementAttribute(application, kAXFocusedUIElementAttribute, deadline: deadline)) { return element }
+        if enableAccessibility, Date() < deadline {
+            AXUIElementSetMessagingTimeout(application, Float(min(0.08, deadline.timeIntervalSinceNow)))
+            let status = AXUIElementSetAttributeValue(application, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+            CaptureLog.event("focus.enable", code: Int(status.rawValue))
+            if let element = matching(elementAttribute(application, kAXFocusedUIElementAttribute, deadline: deadline)) { return element }
+        }
+        // Some apps expose keyboard focus only through the system-wide AX object.
+        // Never substitute an element from a different process.
+        return matching(elementAttribute(AXUIElementCreateSystemWide(), kAXFocusedUIElementAttribute, deadline: deadline))
+    }
+
     static func attribute(_ element: AXUIElement, _ name: String, deadline: Date? = nil) -> CFTypeRef? {
         if let deadline {
             let remaining = deadline.timeIntervalSinceNow
@@ -137,20 +186,85 @@ enum Capture {
         return result
     }
 
-    static func focused() throws -> (text: String, app: String, context: CaptureContext) {
-        guard AXIsProcessTrusted() else { throw CaptureError.permission }
-        guard let front = NSWorkspace.shared.frontmostApplication else { throw CaptureError.unsupported }
+    static func safeForCopy(_ element: AXUIElement, bundleID: String) -> Bool {
+        let deadline = Date().addingTimeInterval(0.2)
+        guard let role = attribute(element, kAXRoleAttribute, deadline: deadline) as? String, !role.isEmpty else { return false }
+        let remaining = deadline.timeIntervalSinceNow
+        guard remaining > 0 else { return false }
+        AXUIElementSetMessagingTimeout(element, Float(min(0.08, remaining)))
+        var value: CFTypeRef?
+        let status = AXUIElementCopyAttributeValue(element, kAXSubroleAttribute as CFString, &value)
+        CaptureLog.event("copy.subrole-status", code: Int(status.rawValue))
+        // Electron editors (including Canva) may expose the attribute with no value.
+        // This is absence of an optional subrole, not a failed security read.
+        guard Date() < deadline,
+              status == .attributeUnsupported || status == .noValue || (status == .success && value is String) else { return false }
+        return CapturePolicy.allowedSelection(role: role, subrole: value as? String, app: bundleID)
+    }
+
+    // Prime AX identity only, never selected text, as the user switches applications.
+    static func prepare(_ front: NSRunningApplication) {
+        guard AXIsProcessTrusted(), front.processIdentifier != getpid(),
+              NSWorkspace.shared.frontmostApplication?.processIdentifier == front.processIdentifier,
+              CapturePolicy.allowedSelection(role: "", subrole: nil, app: front.bundleIdentifier ?? "") else { return }
         let application = AXUIElementCreateApplication(front.processIdentifier)
-        AXUIElementSetMessagingTimeout(application, 1)
-        guard let value = attribute(application, kAXFocusedUIElementAttribute), CFGetTypeID(value) == AXUIElementGetTypeID() else {
-            throw CaptureError.unsupported
-        }
-        let element = unsafeBitCast(value, to: AXUIElement.self)
+        let electron = isElectron(front)
+        _ = resolvedFocus(application: application, pid: front.processIdentifier, enableAccessibility: electron,
+                          deadline: Date().addingTimeInterval(0.15))
+    }
+
+    private static func isElectron(_ front: NSRunningApplication) -> Bool {
+        front.bundleURL.map { FileManager.default.fileExists(atPath: $0.appendingPathComponent("Contents/Frameworks/Electron Framework.framework").path) } ?? false
+    }
+
+    static func focused(completion: @escaping (Result<(text: String, app: String, context: CaptureContext), Error>) -> Void) {
+        CaptureLog.event("capture.start")
+        guard AXIsProcessTrusted() else { CaptureLog.event("permission.denied"); completion(.failure(CaptureError.permission)); return }
+        guard let front = NSWorkspace.shared.frontmostApplication else { completion(.failure(CaptureError.unsupported)); return }
+        CaptureLog.event("capture.target", code: Int(front.processIdentifier))
         let bundleID = front.bundleIdentifier ?? ""
-        let draft = try read(element, bundleID: bundleID)
-        let metadata = context(element: element, mode: draft.mode, bundleID: bundleID)
-        // Do not archive a stale field if the user switches apps while Accessibility responds.
-        guard NSWorkspace.shared.frontmostApplication?.processIdentifier == front.processIdentifier else { throw CaptureError.unsupported }
-        return (draft.text, front.localizedName ?? "Unknown", metadata)
+        guard CapturePolicy.allowedSelection(role: "", subrole: nil, app: bundleID) else { completion(.failure(CaptureError.unsupported)); return }
+        let application = AXUIElementCreateApplication(front.processIdentifier)
+        var initialize = isElectron(front)
+        waitForFocus(read: { remaining in
+            let enable = initialize
+            initialize = false
+            return resolvedFocus(application: application, pid: front.processIdentifier, enableAccessibility: enable,
+                                 deadline: Date().addingTimeInterval(min(0.3, remaining)))
+        }, isCurrent: { NSWorkspace.shared.frontmostApplication?.processIdentifier == front.processIdentifier },
+        schedule: { delay, action in DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: action) }) { result in
+            switch result {
+            case .success(let element): capture(element: element, front: front, application: application, completion: completion)
+            case .failure(let error):
+                CaptureLog.event("focus.unavailable")
+                completion(.failure(error))
+            }
+        }
+    }
+
+    private static func capture(element: AXUIElement, front: NSRunningApplication, application: AXUIElement,
+                                completion: @escaping (Result<(text: String, app: String, context: CaptureContext), Error>) -> Void) {
+        let bundleID = front.bundleIdentifier ?? ""
+        do {
+            let deadline = Date().addingTimeInterval(0.2)
+            let role = attribute(element, kAXRoleAttribute, deadline: deadline) as? String ?? ""
+            let subrole = attribute(element, kAXSubroleAttribute, deadline: deadline) as? String
+            guard CapturePolicy.allowedSelection(role: role, subrole: subrole, app: bundleID) else { completion(.failure(CaptureError.unsupported)); return }
+            if let draft = try? read(element, bundleID: bundleID), !draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                let metadata = context(element: element, mode: draft.mode, bundleID: bundleID)
+                guard NSWorkspace.shared.frontmostApplication?.processIdentifier == front.processIdentifier,
+                      let current = resolvedFocus(application: application, pid: front.processIdentifier, deadline: Date().addingTimeInterval(0.1)),
+                      CFEqual(element, current) else { completion(.failure(CopySessionError.changed)); return }
+                CaptureLog.event("accessibility.success", count: draft.text.count)
+                completion(.success((draft.text, front.localizedName ?? "Unknown", metadata)))
+                return
+            }
+        }
+        var metadata = context(element: element, mode: .selection, bundleID: bundleID)
+        metadata.method = .copy
+        CaptureLog.event("copy.begin")
+        CopyCapture.selected(front: front, element: element) { result in
+            completion(result.map { ($0, front.localizedName ?? "Unknown", metadata) })
+        }
     }
 }

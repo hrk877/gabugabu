@@ -10,6 +10,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var toast: NSPanel?
     private var toastTimer: Timer?
     private var archive: Archive?
+    private var isCapturing = false
+    private var activationObserver: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Launch Services normally reuses the running app; guard direct binary launches too.
@@ -46,15 +48,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             showHelp()
             message("⌘⌥S を登録できません。他アプリの同じショートカットを解除し、GABUGABUを起動し直してください。", success: false)
         } else if !AXIsProcessTrusted() { showHelp() }
+        activationObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification,
+                                                                               object: nil, queue: .main) { notification in
+            if let front = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication {
+                Capture.prepare(front)
+            }
+        }
+        if let front = NSWorkspace.shared.frontmostApplication { Capture.prepare(front) }
     }
 
     @objc func save() {
         guard let archive else { message("GABUGABU Archiveの準備に失敗しています。アプリを再起動してください。", success: false); return }
-        do {
-            let captured = try Capture.focused()
-            let file = try archive.save(text: captured.text, app: captured.app, context: captured.context)
-            message(file.lastPathComponent, success: true)
-        } catch { message(error.localizedDescription, success: false) }
+        guard !isCapturing else { return }
+        isCapturing = true
+        Capture.focused { [weak self] result in
+            guard let self else { return }
+            self.isCapturing = false
+            do {
+                let captured = try result.get()
+                let file = try archive.save(text: captured.text, app: captured.app, context: captured.context)
+                CaptureLog.event("archive.saved", count: captured.text.count)
+                self.message(file.lastPathComponent, success: true)
+            } catch { self.message(error.localizedDescription, success: false) }
+        }
     }
 
     @objc func openArchive() {
@@ -67,7 +83,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func showHelp() {
         if let help { NSApp.activate(ignoringOtherApps: true); help.makeKeyAndOrderFront(nil); return }
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 470, height: 370), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 470, height: 420), styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "GABUGABU"
         window.isReleasedWhenClosed = false
         let stack = NSStackView()
@@ -78,7 +94,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let heading = NSTextField(labelWithString: "書いた言葉を、手元に残す。")
         heading.font = .systemFont(ofSize: 24, weight: .semibold)
         stack.addArrangedSubview(heading)
-        let body = NSTextField(wrappingLabelWithString: "① 下のボタンでアクセシビリティ設定を開き、\n　「GABUGABU」を許可します。\n② 保存したい文章を選んで ⌘⌥S を押します。\n\n入力欄は、選択なしでも全文を保存できます。\nタイトル・URLは取得できる場合に自動記録。\n\nGABUGABU Archive：ホーム → GABUGABU → Archive\n外部送信・クリップボード操作はありません。\n対応していない画面とパスワード欄は保存しません。")
+        let body = NSTextField(wrappingLabelWithString: "① 下のボタンでアクセシビリティ設定を開き、\n　「GABUGABU」を許可します。\n② 保存したい文章を選んで ⌘⌥S を押します。\n\n入力欄は、選択なしでも全文を保存できます。\n直接取得できない画面では、自動コピーで補助します。\nコピー中は別のコピーや画面移動をせずお待ちください。\nクリップボードは退避・復元しますが、コピー履歴には\n選択文が残る場合があります。\n\n保存先：ホーム → GABUGABU → Archive\n外部送信はありません。コピー禁止の文章は対象外です。")
         body.font = .systemFont(ofSize: 13)
         stack.addArrangedSubview(body)
         let button = NSButton(title: "アクセシビリティ設定を開く", target: self, action: #selector(openPermission))
@@ -127,7 +143,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.contentView = card
         let screen = NSScreen.screens.first(where: { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) }) ?? NSScreen.main
-        if let frame = screen?.visibleFrame { panel.setFrameTopLeftPoint(NSPoint(x: frame.midX - card.bounds.width / 2, y: frame.maxY - 28)) }
+        if let frame = screen?.visibleFrame {
+            panel.setFrameOrigin(NSPoint(x: frame.midX - card.bounds.width / 2, y: frame.minY + 16))
+        }
         toast = panel
         panel.orderFrontRegardless()
         toastTimer = Timer.scheduledTimer(withTimeInterval: success ? 1.6 : 6, repeats: false) { [weak self] _ in self?.toast?.close() }
