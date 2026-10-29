@@ -46,7 +46,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let result = RegisterEventHotKey(UInt32(kVK_ANSI_S), UInt32(cmdKey | optionKey), id, GetApplicationEventTarget(), 0, &shortcut)
         if result != noErr {
             showHelp()
-            message("⌘⌥S を登録できません。他アプリの同じショートカットを解除し、GABUGABUを起動し直してください。", success: false)
+            message("⌘⌥S を登録できません。他アプリの同じショートカットを解除し、GABUGABUを起動し直してください。", success: false, action: .keyboardSettings)
         } else if !AXIsProcessTrusted() { showHelp() }
         activationObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification,
                                                                                object: nil, queue: .main) { notification in
@@ -69,7 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let file = try archive.save(text: captured.text, app: captured.app, context: captured.context)
                 CaptureLog.event("archive.saved", count: captured.text.count)
                 self.message(file.lastPathComponent, success: true)
-            } catch { self.message(error.localizedDescription, success: false) }
+            } catch { self.message(error) }
         }
     }
 
@@ -78,7 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             try FileManager.default.createDirectory(at: archive.directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             NSWorkspace.shared.open(archive.directory)
-        } catch { message(error.localizedDescription, success: false) }
+        } catch { message(error) }
     }
 
     @objc func showHelp() {
@@ -128,27 +128,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
-    private func message(_ text: String, success: Bool) {
+    private func message(_ error: Error) {
+        let action: ToastAction?
+        switch error {
+        case CaptureError.permission, CopySessionError.copyFailed: action = .accessibilitySettings
+        default: action = nil
+        }
+        message(error.localizedDescription, success: false, action: action)
+    }
+
+    private func openToastSettings(_ action: ToastAction) {
+        toastTimer?.invalidate()
+        toast?.close()
+        toast = nil
+        if !NSWorkspace.shared.open(action.url) {
+            message("設定画面を開けませんでした。システム設定から手動で開いてください。", success: false)
+        }
+    }
+
+    private func message(_ text: String, success: Bool, action: ToastAction? = nil) {
         toastTimer?.invalidate()
         toast?.close()
         let icon = Bundle.main.url(forResource: "AppIcon", withExtension: "icns").flatMap { NSImage(contentsOf: $0) }
-        let card = ToastCardView(detail: text, success: success, icon: icon)
-        let panel = NSPanel(contentRect: card.bounds, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        panel.level = .statusBar
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = true
-        panel.isReleasedWhenClosed = false
-        panel.ignoresMouseEvents = true
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.contentView = card
+        let onClick: (() -> Void)?
+        if let action { onClick = { [weak self] in self?.openToastSettings(action) } }
+        else { onClick = nil }
+        let card = ToastCardView(detail: text, success: success, icon: icon, actionTitle: action?.title, onClick: onClick)
+        let panel = ToastPanel(card: card)
         let screen = NSScreen.screens.first(where: { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) }) ?? NSScreen.main
         if let frame = screen?.visibleFrame {
             panel.setFrameOrigin(NSPoint(x: frame.midX - card.bounds.width / 2, y: frame.minY + 16))
         }
         toast = panel
         panel.orderFrontRegardless()
-        toastTimer = Timer.scheduledTimer(withTimeInterval: success ? 1.6 : 6, repeats: false) { [weak self] _ in self?.toast?.close() }
+        toastTimer = Timer.scheduledTimer(withTimeInterval: success ? 1.6 : (card.isActionable ? 12 : 6), repeats: false) { [weak self] _ in self?.toast?.close() }
         if !success { NSSound.beep() }
     }
 }

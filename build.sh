@@ -14,5 +14,5 @@ done
 /bin/cp LICENSE dist/GABUGABU.app/Contents/Resources/LICENSE
 /bin/cp assets/AppIcon.icns dist/GABUGABU.app/Contents/Resources/AppIcon.icns
 /usr/bin/codesign --force --sign - dist/GABUGABU.app
-/usr/bin/ditto -c -k --sequesterRsrc --keepParent dist/GABUGABU.app dist/GABUGABU-1.4.0-mac.zip
-echo 'Built: dist/GABUGABU.app and dist/GABUGABU-1.4.0-mac.zip'
+/usr/bin/ditto -c -k --sequesterRsrc --keepParent dist/GABUGABU.app dist/GABUGABU-1.4.1-mac.zip
+echo 'Built: dist/GABUGABU.app and dist/GABUGABU-1.4.1-mac.zip'

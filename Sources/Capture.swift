@@ -14,7 +14,7 @@ enum CaptureError: LocalizedError {
     case permission, unsupported, focusUnavailable
     var errorDescription: String? {
         switch self {
-        case .permission: return "「使い方・権限設定」からアクセシビリティを許可してください。"
+        case .permission: return "保存するには、GABUGABUのアクセシビリティを許可してください。"
         case .unsupported: return "文章を選択するか、入力欄をクリックしてから ⌘⌥S を押してください。この画面の選択文は読み取れない場合があります。"
         case .focusUnavailable: return "このアプリから文章の選択位置を確認できませんでした。保存元の画面をクリックして、もう一度試してください。"
         }
